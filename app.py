@@ -17,8 +17,8 @@ st.set_page_config(
 )
 
 # Конфигурация
-SCHEMA_NAME = os.environ.get('SCHEMA_NAME', 'your_schema_name')
-API_BASE_URL = os.environ.get('API_BASE_URL', 'your_api_base_url')
+SCHEMA_NAME = config.schema_name
+API_BASE_URL = config.URL.rstrip('/')  # Убираем trailing slash, если он есть
 
 def send_rest(endpoint):
     """
@@ -36,9 +36,12 @@ def load_data():
     Загрузка данных из базы данных
     """
     try:
-        ans, is_ok, _ = send_rest(f'v2/select/{SCHEMA_NAME}/nsi_list?column_order=id')
+        ans, is_ok, status_code = send_rest(f'v2/select/{SCHEMA_NAME}/nsi_list?column_order=id')
         if not is_ok:
             st.error('Ошибка при получении данных из БД')
+            st.warning(f"URL запроса: {API_BASE_URL}/v2/select/{SCHEMA_NAME}/nsi_list?column_order=id")
+            st.warning(f"HTTP-код ответа: {status_code}")
+            st.warning(f"Ответ сервера: {ans}")
             return None
         
         # Преобразуем JSON в список словарей
