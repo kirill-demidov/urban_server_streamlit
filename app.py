@@ -248,130 +248,126 @@ def main():
     
     # Загрузка данных
     df = load_data()
-    if df is None:
-        st.stop()
     
-    # Боковая панель с фильтрами
+    if df is None:
+        st.error("Не удалось загрузить данные")
+        return
+    
+    # Фильтры для всего приложения
     st.sidebar.header("Фильтры")
     
     # Фильтр по дате
-    try:
-        min_date = df['published_at'].min().date()
-        max_date = df['published_at'].max().date()
-        
-        # Добавляем отладочную информацию
-        st.sidebar.write(f"**Доступный диапазон дат:**")
-        st.sidebar.write(f"• От: {min_date.strftime('%d.%m.%Y')}")
-        st.sidebar.write(f"• До: {max_date.strftime('%d.%m.%Y')}")
-        
-        # Добавляем выбор относительных дат
-        date_filter_type = st.sidebar.radio(
-            "Тип фильтра по дате",
-            ["Произвольный период", "Относительный период"]
+    min_date = df['published_at'].min().date()
+    max_date = df['published_at'].max().date()
+    
+    # Добавляем выбор типа фильтра по дате
+    date_filter_type = st.sidebar.radio(
+        "Тип фильтра по дате",
+        ["Произвольный период", "Относительный период"]
+    )
+    
+    if date_filter_type == "Относительный период":
+        relative_period = st.sidebar.selectbox(
+            "Выберите период",
+            ["Последние 7 дней", "Последние 30 дней", "Последние 90 дней", "Последние 180 дней", "Последние 365 дней"]
         )
         
-        if date_filter_type == "Относительный период":
-            relative_period = st.sidebar.selectbox(
-                "Выберите период",
-                ["Последние 7 дней", "Последние 30 дней", "Последние 90 дней", "Последние 180 дней", "Последние 365 дней"]
-            )
+        # Вычисляем даты на основе выбранного периода
+        end_date = max_date  # Используем максимальную дату из данных
+        if relative_period == "Последние 7 дней":
+            start_date = end_date - pd.Timedelta(days=7)
+        elif relative_period == "Последние 30 дней":
+            start_date = end_date - pd.Timedelta(days=30)
+        elif relative_period == "Последние 90 дней":
+            start_date = end_date - pd.Timedelta(days=90)
+        elif relative_period == "Последние 180 дней":
+            start_date = end_date - pd.Timedelta(days=180)
+        else:  # Последние 365 дней
+            start_date = end_date - pd.Timedelta(days=365)
             
-            # Вычисляем даты на основе выбранного периода
-            end_date = max_date  # Используем максимальную дату из данных
-            if relative_period == "Последние 7 дней":
-                start_date = end_date - pd.Timedelta(days=7)
-            elif relative_period == "Последние 30 дней":
-                start_date = end_date - pd.Timedelta(days=30)
-            elif relative_period == "Последние 90 дней":
-                start_date = end_date - pd.Timedelta(days=90)
-            elif relative_period == "Последние 180 дней":
-                start_date = end_date - pd.Timedelta(days=180)
-            else:  # Последние 365 дней
-                start_date = end_date - pd.Timedelta(days=365)
-                
-            date_range = (start_date, end_date)
-        else:
-            date_range = st.sidebar.date_input(
-                "Выберите период",
-                value=(min_date, max_date),
-                min_value=min_date,
-                max_value=max_date
-            )
-    except Exception as e:
-        st.error(f"Ошибка при обработке дат: {str(e)}")
-        min_date = max_date = datetime.now().date()
-        date_range = (min_date, max_date)
+        date_range = (start_date, end_date)
+    else:
+        date_range = st.sidebar.date_input(
+            "Период",
+            value=(min_date, max_date),
+            min_value=min_date,
+            max_value=max_date
+        )
+    
+    # Фильтр по каналу
+    channels = ['Все каналы'] + sorted(df['channel_title'].unique().tolist())
+    selected_channel = st.sidebar.selectbox("Канал", channels)
     
     # Фильтр по настроению
-    sentiments = df['sentiment'].dropna().unique()
-    if len(sentiments) > 0:
-        selected_sentiments = st.sidebar.multiselect(
-            "Выберите настроения",
-            options=sentiments,
-            default=sentiments
-        )
-    else:
-        selected_sentiments = []
-        st.sidebar.write("Нет доступных настроений")
+    sentiments = ['Все настроения'] + sorted(df['sentiment'].unique().tolist())
+    selected_sentiment = st.sidebar.selectbox("Настроение", sentiments)
     
-    # Фильтр по поисковым образам
-    st.sidebar.subheader("Поисковые образы")
-    search_query = st.sidebar.text_input("Поиск по названию или описанию")
+    # Фильтр по количеству просмотров
+    min_views = int(df['views_count'].min())
+    max_views = int(df['views_count'].max())
+    views_range = st.sidebar.slider(
+        "Количество просмотров",
+        min_value=min_views,
+        max_value=max_views,
+        value=(min_views, max_views)
+    )
     
-    # Добавляем кнопку для нового поиска в YouTube
-    if st.sidebar.button("Новый поиск в YouTube"):
-        try:
-            # Получаем результаты поиска
-            videos = get_youtube_search_links(search_query, days_ago=30)
-            
-            if videos:
-                st.sidebar.success(f"Найдено {len(videos)} видео")
-                # Обновляем данные
-                df = load_data()
-            else:
-                st.sidebar.warning("Видео не найдены")
-        except Exception as e:
-            st.sidebar.error(f"Ошибка при поиске: {str(e)}")
+    # Общие настройки сортировки
+    st.sidebar.header("Настройки отображения")
+    sort_by = st.sidebar.selectbox(
+        "Сортировать по",
+        options=['Просмотры', 'Лайки', 'Комментарии', 'Дата публикации'],
+        index=0
+    )
+    sort_order = st.sidebar.selectbox(
+        "Порядок сортировки",
+        options=['По убыванию', 'По возрастанию'],
+        index=0
+    )
     
-    # Применение фильтров
-    try:
-        # Создаем маску для фильтрации
-        date_mask = (df['published_at'].dt.date >= date_range[0]) & (df['published_at'].dt.date <= date_range[1])
-        
-        # Применяем фильтры
-        filtered_df = df[date_mask]
-        
-        if len(selected_sentiments) > 0:
-            sentiment_mask = filtered_df['sentiment'].isin(selected_sentiments)
-            filtered_df = filtered_df[sentiment_mask]
-        
-        # Применяем поисковый фильтр
-        if search_query:
-            search_mask = (
-                filtered_df['title'].str.contains(search_query, case=False, na=False) |
-                filtered_df['description'].str.contains(search_query, case=False, na=False)
-            )
-            filtered_df = filtered_df[search_mask]
-            
-        # Выводим информацию о примененных фильтрах
-        st.sidebar.write("---")
-        st.sidebar.write("**Примененные фильтры:**")
-        st.sidebar.write(f"• Период: {date_range[0].strftime('%d.%m.%Y')} - {date_range[1].strftime('%d.%m.%Y')}")
-        if len(selected_sentiments) > 0:
-            st.sidebar.write(f"• Настроения: {', '.join(selected_sentiments)}")
-        if search_query:
-            st.sidebar.write(f"• Поисковый запрос: {search_query}")
-        
-        st.sidebar.write(f"**Результаты фильтрации:**")
-        st.sidebar.write(f"• Найдено видео: {len(filtered_df)} из {len(df)}")
-        
-        # Добавляем отладочную информацию о данных
-        if len(filtered_df) == 0:
-            st.warning("Нет видео, соответствующих выбранным фильтрам. Попробуйте изменить параметры фильтрации.")
-        
-    except Exception as e:
-        st.error(f"Ошибка при фильтрации данных: {str(e)}")
-        filtered_df = df
+    # Выбор колонок для отображения
+    columns_to_show = st.sidebar.multiselect(
+        "Выберите колонки для отображения",
+        options=df.columns.tolist(),
+        default=['title', 'channel_title', 'published_at', 'views_count', 'likes_count', 'comments_count', 'sentiment']
+    )
+    
+    # Применяем фильтры
+    filtered_df = df.copy()
+    
+    # Фильтр по дате
+    if len(date_range) == 2:
+        start_date, end_date = date_range
+        filtered_df = filtered_df[
+            (filtered_df['published_at'].dt.date >= start_date) &
+            (filtered_df['published_at'].dt.date <= end_date)
+        ]
+    
+    # Фильтр по каналу
+    if selected_channel != 'Все каналы':
+        filtered_df = filtered_df[filtered_df['channel_title'] == selected_channel]
+    
+    # Фильтр по настроению
+    if selected_sentiment != 'Все настроения':
+        filtered_df = filtered_df[filtered_df['sentiment'] == selected_sentiment]
+    
+    # Фильтр по просмотрам
+    filtered_df = filtered_df[
+        (filtered_df['views_count'] >= views_range[0]) &
+        (filtered_df['views_count'] <= views_range[1])
+    ]
+    
+    # Применяем сортировку
+    sort_columns = {
+        'Просмотры': 'views_count',
+        'Лайки': 'likes_count',
+        'Комментарии': 'comments_count',
+        'Дата публикации': 'published_at'
+    }
+    
+    sort_column = sort_columns[sort_by]
+    ascending = sort_order == 'По возрастанию'
+    filtered_df = filtered_df.sort_values(by=sort_column, ascending=ascending)
     
     # Основные метрики
     col1, col2, col3, col4 = st.columns(4)
@@ -408,6 +404,8 @@ def main():
     
     # Детальная статистика по отдельному видео
     st.subheader("Детальная статистика по видео")
+    
+    # Выбор видео
     video_titles = filtered_df['title'].tolist()
     selected_video = st.selectbox(
         "Выберите видео для детального анализа",
@@ -454,91 +452,27 @@ def main():
                 st.write(video_data['description'])
         
         with tab2:
-            st.write("**Комментарии к видео**")
-            
-            # Загружаем комментарии для выбранного видео
-            try:
-                comments_ans, is_ok, _ = send_rest(
-                    f'v2/select/{SCHEMA_NAME}/nsi_comments?video_id={video_data["video_id"]}'
-                )
-                
-                if is_ok:
-                    comments_data = json.loads(comments_ans)
-                    
-                    if len(comments_data) > 0:
-                        # Создаем DataFrame для комментариев
-                        comments_df = pd.DataFrame(comments_data)
-                        
-                        # Форматируем даты
-                        comments_df['published_at'] = pd.to_datetime(comments_df['published_at']).dt.strftime('%d.%m.%Y %H:%M')
-                        
-                        # Переименовываем колонки
-                        comments_df = comments_df.rename(columns={
-                            'sh_name': 'Автор',
-                            'text': 'Текст',
-                            'likes': 'Лайки',
-                            'published_at': 'Дата'
-                        })
-                        
-                        # Сортируем по дате (новые сверху)
-                        comments_df = comments_df.sort_values('Дата', ascending=False)
-                        
-                        # Отображаем таблицу
-                        st.dataframe(
-                            comments_df[['Автор', 'Текст', 'Лайки', 'Дата']],
-                            use_container_width=True,
-                            hide_index=True
-                        )
-                    else:
-                        st.info("К этому видео пока нет комментариев")
-                else:
-                    st.error("Не удалось загрузить комментарии")
-                    
-            except Exception as e:
-                st.error(f"Ошибка при загрузке комментариев: {str(e)}")
+            st.write("**Комментарии:**")
+            if 'comments' in video_data and video_data['comments']:
+                for comment in video_data['comments']:
+                    st.write(f"**{comment['author']}** ({comment['published_at']}):")
+                    st.write(comment['text'])
+                    st.write("---")
+            else:
+                st.write("Комментарии отсутствуют")
     
-    # Таблица с данными
+    # Детальные данные
     st.subheader("Детальные данные")
     
-    # Создаем словарь для перевода названий колонок
-    column_names = {
-        'title': 'Название',
-        'url': 'Ссылка',
-        'views_count': 'Просмотры',
-        'likes_count': 'Лайки',
-        'dislikes_count': 'Дизлайки',
-        'comments_count': 'Комментарии',
-        'sentiment': 'Настроение',
-        'sentiment_value': 'Значение настроения',
-        'channel_title': 'Канал',
-        'published_at': 'Дата публикации',
-        'duration': 'Длительность'
-    }
-    
-    display_columns = [
-        'title', 'url', 'views_count', 
-        'likes_count', 'dislikes_count', 'comments_count',
-        'sentiment', 'sentiment_value', 'channel_title',
-        'published_at', 'duration'
-    ]
-    
-    # Проверяем наличие всех колонок
-    display_columns = [col for col in display_columns if col in filtered_df.columns]
-    
-    # Сортируем данные по просмотрам
-    filtered_df = filtered_df.sort_values('views_count', ascending=False)
-    
-    # Переименовываем колонки для отображения
-    display_df = filtered_df[display_columns].rename(columns=column_names)
-    
-    # Форматируем даты
-    display_df['Дата публикации'] = display_df['Дата публикации'].dt.strftime('%d.%m.%Y %H:%M')
-    
-    st.dataframe(
-        display_df,
-        use_container_width=True,
-        hide_index=True
-    )
+    # Отображаем данные
+    if columns_to_show:
+        st.dataframe(
+            filtered_df[columns_to_show],
+            use_container_width=True,
+            height=400
+        )
+    else:
+        st.warning("Выберите хотя бы одну колонку для отображения")
 
 if __name__ == '__main__':
     main() 
