@@ -244,7 +244,7 @@ def create_top_channels(df):
     return fig
 
 def main():
-    st.title("📊 Urban Server Analytics")
+    st.title("📊 Анализ YouTube просмотров")
     
     # Загрузка данных
     df = load_data()
